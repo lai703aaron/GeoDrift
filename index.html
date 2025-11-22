@@ -4,18 +4,72 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>地球板块移动历史</title>
-    
-    <!-- 链接外部CSS文件 -->
-    <link rel="stylesheet" href="styles/main.css">
-    
-    <!-- 预加载Three.js库以提高性能 -->
-    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
-    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+    <style>
+        /* 基础样式直接放在HTML中，确保加载 */
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: #000;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #infoPanel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 300px;
+            z-index: 100;
+        }
+        #timeline {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        #controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+        button {
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            z-index: 1000;
+        }
+    </style>
 </head>
 <body>
-    <!-- 主容器 -->
+    <div id="loading">加载中...</div>
     <div id="container">
-        <!-- 信息面板 -->
         <div id="infoPanel">
             <h2>地球板块移动历史</h2>
             <p>使用时间轴选择不同年代，查看地球板块位置变化。</p>
@@ -25,18 +79,15 @@
             </div>
         </div>
         
-        <!-- 控制按钮 -->
         <div id="controls">
             <button id="autoRotate">暂停旋转</button>
             <button id="resetView">重置视角</button>
-            <button id="fullscreen">全屏</button>
         </div>
         
-        <!-- 时间轴 -->
         <div id="timeline">
             <div id="eraLabel">现代 (0 百万年前)</div>
             <input type="range" id="eraSlider" min="0" max="12" value="0" step="1">
-            <div class="timeline-labels">
+            <div style="display: flex; justify-content: space-between; margin-top: 5px;">
                 <span>现代</span>
                 <span>6500万年前</span>
                 <span>2亿年前</span>
@@ -45,11 +96,203 @@
         </div>
     </div>
 
-    <!-- 加载Three.js库 -->
+    <!-- 使用可靠的Three.js CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
     
-    <!-- 加载应用主脚本 -->
-    <script src="scripts/main.js"></script>
+    <!-- 直接内联JavaScript，避免文件路径问题 -->
+    <script>
+        // 初始化Three.js场景
+        let scene, camera, renderer, earth, controls;
+        let autoRotate = true;
+
+        // 年代数据
+        const eras = [
+            { name: "现代", year: "0", description: "现代地球板块分布" },
+            { name: "上新世", year: "5", description: "大陆位置接近现代，巴拿马地峡形成" },
+            { name: "中新世", year: "23", description: "大陆持续漂移，地中海形成" },
+            { name: "始新世", year: "56", description: "印度板块与亚洲碰撞，喜马拉雅山开始形成" },
+            { name: "白垩纪", year: "100", description: "恐龙时代晚期，大西洋持续扩张" },
+            { name: "侏罗纪", year: "200", description: "盘古大陆开始分裂，大西洋开始形成" },
+            { name: "三叠纪", year: "250", description: "盘古大陆形成，所有陆地连成一体" },
+            { name: "二叠纪", year: "300", description: "盘古大陆逐渐形成" },
+            { name: "石炭纪", year: "360", description: "大陆碰撞形成阿帕拉契山脉和瓦里斯坎山脉" },
+            { name: "泥盆纪", year: "416", description: "劳伦大陆与波罗的大陆碰撞" },
+            { name: "志留纪", year: "444", description: "大陆逐渐聚集" },
+            { name: "奥陶纪", year: "488", description: "冈瓦纳大陆位于南极地区" },
+            { name: "寒武纪", year: "542", description: "早期地球板块分布" }
+        ];
+
+        // 初始化函数
+        function init() {
+            console.log("初始化3D场景...");
+            
+            // 隐藏加载提示
+            document.getElementById('loading').style.display = 'none';
+            
+            // 检查WebGL支持
+            if (!isWebGLAvailable()) {
+                document.getElementById('loading').innerHTML = "您的浏览器不支持WebGL，无法显示3D内容";
+                return;
+            }
+            
+            // 创建场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000010);
+            
+            // 创建相机
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            
+            // 创建渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // 添加轨道控制器
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // 添加光源
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 3, 5);
+            scene.add(directionalLight);
+            
+            // 创建星空背景
+            createStarfield();
+            
+            // 创建地球
+            createEarth();
+            
+            // 添加事件监听器
+            setupEventListeners();
+            
+            // 开始动画循环
+            animate();
+            
+            console.log("3D场景初始化完成");
+        }
+
+        // 检查WebGL支持
+        function isWebGLAvailable() {
+            try {
+                const canvas = document.createElement('canvas');
+                return !!(window.WebGLRenderingContext && 
+                    (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+            } catch(e) {
+                return false;
+            }
+        }
+
+        // 创建星空背景
+        function createStarfield() {
+            const starGeometry = new THREE.BufferGeometry();
+            const starCount = 5000;
+            const positions = new Float32Array(starCount * 3);
+            
+            for (let i = 0; i < starCount * 3; i++) {
+                positions[i] = (Math.random() - 0.5) * 2000;
+            }
+            
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 1,
+                sizeAttenuation: true
+            });
+            
+            const stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+        }
+
+        // 创建地球
+        function createEarth() {
+            const geometry = new THREE.SphereGeometry(2, 64, 64);
+            
+            // 创建基础材质
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x4a9df0,
+                specular: new THREE.Color(0x333333),
+                shininess: 5
+            });
+            
+            earth = new THREE.Mesh(geometry, material);
+            scene.add(earth);
+            
+            // 初始化地球纹理
+            updateEarthTexture(0);
+        }
+
+        // 更新地球纹理基于选定年代
+        function updateEarthTexture(eraIndex) {
+            if (!earth) return;
+            
+            const era = eras[eraIndex];
+            
+            // 模拟不同年代的颜色变化
+            // 实际应用中，这里应该加载对应年代的板块分布图
+            const hue = 0.5 - (eraIndex / eras.length) * 0.4; // 从蓝色到绿色变化
+            const color = new THREE.Color().setHSL(hue, 0.7, 0.4);
+            
+            earth.material.color = color;
+            earth.material.needsUpdate = true;
+            
+            // 更新信息面板
+            document.getElementById('eraName').textContent = era.name;
+            document.getElementById('eraDescription').textContent = era.description;
+            document.getElementById('eraLabel').textContent = ${era.name} (${era.year} 百万年前);
+        }
+
+        // 设置事件监听器
+        function setupEventListeners() {
+            // 时间轴滑块
+            document.getElementById('eraSlider').addEventListener('input', function(e) {
+                const eraIndex = parseInt(e.target.value);
+                updateEarthTexture(eraIndex);
+            });
+            
+            // 自动旋转按钮
+            document.getElementById('autoRotate').addEventListener('click', function() {
+                autoRotate = !autoRotate;
+                this.textContent = autoRotate ? '暂停旋转' : '开始旋转';
+            });
+            
+            // 重置视角按钮
+            document.getElementById('resetView').addEventListener('click', function() {
+                controls.reset();
+            });
+            
+            // 窗口大小调整
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // 窗口大小调整处理
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            if (earth && autoRotate) {
+                earth.rotation.y += 0.001;
+            }
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // 当页面加载完成后初始化
+        window.addEventListener('load', init);
+    </script>
 </body>
-</html>
+</
